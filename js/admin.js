@@ -197,35 +197,45 @@ function displayCode(code) {
 
 // Manual Code Generation
 async function handleManualGenerate() {
-    if (!esp32Connected) {
-        showToast('Please connect to ESP32 first', 'error');
-        return;
-    }
-    
     try {
         manualGenerateBtn.textContent = 'Generating...';
         manualGenerateBtn.disabled = true;
         
-        const response = await fetch(`http://${esp32IP}/generateCode`, {
-            method: 'POST',
-            mode: 'cors'
+        // Generate random 2-3 digit code
+        const code = String(Math.floor(Math.random() * (999 - 10 + 1)) + 10);
+        
+        // Calculate expiry time (30 minutes from now)
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+        
+        // Save directly to Firebase
+        await db.collection('votingCodes').doc(code).set({
+            code: code,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
+            usedTeams: [],
+            generatedBy: 'manual'
         });
         
-        if (response.ok) {
-            const data = await response.json();
-            
-            if (data.success) {
-                displayCode(data.code);
-                showToast('Code generated successfully!', 'success');
-            } else {
-                throw new Error(data.message);
+        // Display the code
+        displayCode(code);
+        showToast('Code generated and saved to Firebase!', 'success');
+        
+        // If ESP32 is connected, also try to sync
+        if (esp32Connected) {
+            try {
+                await fetch(`http://${esp32IP}/generateCode`, {
+                    method: 'POST',
+                    mode: 'cors'
+                });
+            } catch (error) {
+                console.log('ESP32 sync skipped (offline)');
             }
-        } else {
-            throw new Error('Failed to generate code');
         }
+        
     } catch (error) {
         console.error('Manual generate error:', error);
-        showToast('Failed to generate code', 'error');
+        showToast('Failed to generate code: ' + error.message, 'error');
     } finally {
         manualGenerateBtn.textContent = 'Manual Generate';
         manualGenerateBtn.disabled = false;
@@ -233,7 +243,7 @@ async function handleManualGenerate() {
 }
 
 // QR Code Generation
-function handleGenerateQR() {
+async function handleGenerateQR() {
     const teamName = teamNameInput.value.trim();
     const teamId = teamIdInput.value.trim();
     
@@ -242,30 +252,52 @@ function handleGenerateQR() {
         return;
     }
     
-    // Clear previous QR code
-    const qrcodeDiv = document.getElementById('qrcode');
-    qrcodeDiv.innerHTML = '';
-    
-    // Generate voting URL
-    const votingURL = `${window.location.origin}${window.location.pathname.replace('index.html', '')}vote.html?team=${encodeURIComponent(teamId)}&name=${encodeURIComponent(teamName)}`;
-    
-    // Generate QR code
-    new QRCode(qrcodeDiv, {
-        text: votingURL,
-        width: 256,
-        height: 256,
-        colorDark: "#000000",
-        colorLight: "#ffffff",
-        correctLevel: QRCode.CorrectLevel.H
-    });
-    
-    // Update team name label
-    document.getElementById('teamNameLabel').textContent = teamName;
-    
-    // Show result
-    qrResult.style.display = 'block';
-    
-    showToast('QR Code generated!', 'success');
+    try {
+        generateQRBtn.disabled = true;
+        generateQRBtn.textContent = 'Generating...';
+        
+        // Save team to Firebase
+        await db.collection('teams').doc(teamId).set({
+            teamId: teamId,
+            teamName: teamName,
+            votes: 0,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        
+        // Clear previous QR code
+        const qrcodeDiv = document.getElementById('qrcode');
+        qrcodeDiv.innerHTML = '';
+        
+        // Generate voting URL
+        const votingURL = `${window.location.origin}${window.location.pathname.replace('index.html', '')}vote.html?team=${encodeURIComponent(teamId)}&name=${encodeURIComponent(teamName)}`;
+        
+        // Generate QR code
+        new QRCode(qrcodeDiv, {
+            text: votingURL,
+            width: 256,
+            height: 256,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.H
+        });
+        
+        // Update team name label
+        document.getElementById('teamNameLabel').textContent = teamName;
+        
+        // Show result
+        qrResult.style.display = 'block';
+        
+        showToast('Team saved & QR Code generated!', 'success');
+        
+        // Refresh analytics to show new team
+        setTimeout(() => loadAnalytics(), 500);
+    } catch (error) {
+        console.error('Error saving team:', error);
+        showToast('Failed to save team data', 'error');
+    } finally {
+        generateQRBtn.disabled = false;
+        generateQRBtn.textContent = 'Generate QR Code';
+    }
 }
 
 function handleDownloadQR() {

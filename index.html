@@ -50,7 +50,10 @@
         <div class="container">
             <!-- ESP32 Connection Section -->
             <section class="card">
-                <h2>📡 ESP32 Connection</h2>
+                <h2>📡 ESP32 Connection (Optional)</h2>
+                <p style="color: #666; margin-bottom: 12px;">
+                    <small>Connect ESP32 for automatic code generation via RFID. Works without ESP32 using manual generation.</small>
+                </p>
                 <div class="esp32-connection">
                     <div class="connection-form">
                         <input type="text" id="esp32IP" placeholder="192.168.1.100" value="192.168.1.100">
@@ -69,10 +72,10 @@
                 <div class="code-container">
                     <div id="currentCode" class="voting-code">---</div>
                     <div class="code-info">
-                        <span id="codeTimestamp">Waiting for code...</span>
+                        <span id="codeTimestamp">Click 'Manual Generate' to create code</span>
                     </div>
                 </div>
-                <button id="manualGenerateBtn" class="btn btn-secondary">Manual Generate</button>
+                <button id="manualGenerateBtn" class="btn btn-success">Generate Code (Works Offline)</button>
             </section>
 
             <!-- Team QR Generator -->
