@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Voting System</title>
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    
+    <!-- QR Code Generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen">
+        <div class="login-container">
+            <h1>🎫 Voting System Admin</h1>
+            <div class="card">
+                <h2>Admin Login</h2>
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="adminEmail">Email</label>
+                        <input type="email" id="adminEmail" placeholder="admin@college.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="adminPassword">Password</label>
+                        <input type="password" id="adminPassword" placeholder="Enter password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Login</button>
+                    <div id="loginError" class="error-message"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="dashboardScreen" class="screen" style="display: none;">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="container">
+                <h1>🎫 Voting System Dashboard</h1>
+                <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- ESP32 Connection Section -->
+            <section class="card">
+                <h2>📡 ESP32 Connection</h2>
+                <div class="esp32-connection">
+                    <div class="connection-form">
+                        <input type="text" id="esp32IP" placeholder="192.168.1.100" value="192.168.1.100">
+                        <button id="connectESP32Btn" class="btn btn-primary">Connect</button>
+                    </div>
+                    <div class="connection-status">
+                        <span class="status-indicator" id="esp32Status"></span>
+                        <span id="esp32StatusText">Not Connected</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Live Code Display -->
+            <section class="card code-display">
+                <h2>🎟️ Latest Voting Code</h2>
+                <div class="code-container">
+                    <div id="currentCode" class="voting-code">---</div>
+                    <div class="code-info">
+                        <span id="codeTimestamp">Waiting for code...</span>
+                    </div>
+                </div>
+                <button id="manualGenerateBtn" class="btn btn-secondary">Manual Generate</button>
+            </section>
+
+            <!-- Team QR Generator -->
+            <section class="card">
+                <h2>🔳 Generate Team QR Code</h2>
+                <div class="qr-generator">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="teamName">Team Name</label>
+                            <input type="text" id="teamName" placeholder="Project Alpha">
+                        </div>
+                        <div class="form-group">
+                            <label for="teamId">Team ID</label>
+                            <input type="text" id="teamId" placeholder="team1">
+                        </div>
+                    </div>
+                    <button id="generateQRBtn" class="btn btn-primary">Generate QR Code</button>
+                    
+                    <div id="qrResult" class="qr-result" style="display: none;">
+                        <div class="qr-display">
+                            <div id="qrcode"></div>
+                            <p class="team-name-label" id="teamNameLabel"></p>
+                        </div>
+                        <button id="downloadQRBtn" class="btn btn-success">Download PNG</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Analytics Panel -->
+            <section class="card">
+                <h2>📊 Live Analytics</h2>
+                <div class="analytics-controls">
+                    <button id="refreshAnalyticsBtn" class="btn btn-secondary">Refresh</button>
+                    <button id="exportResultsBtn" class="btn btn-success">Export CSV</button>
+                </div>
+                
+                <div class="analytics-grid">
+                    <!-- Stats Summary -->
+                    <div class="stat-card">
+                        <h3>Total Votes</h3>
+                        <div class="stat-value" id="totalVotes">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Codes</h3>
+                        <div class="stat-value" id="activeCodes">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Teams</h3>
+                        <div class="stat-value" id="totalTeams">0</div>
+                    </div>
+                </div>
+
+                <!-- Top/Bottom Teams -->
+                <div class="top-bottom-container">
+                    <div class="top-team">
+                        <h3>🏆 Highest Votes</h3>
+                        <div id="topTeam" class="team-stat">
+                            <span class="team-name">-</span>
+                            <span class="vote-count">0</span>
+                        </div>
+                    </div>
+                    <div class="bottom-team">
+                        <h3>📉 Lowest Votes</h3>
+                        <div id="bottomTeam" class="team-stat">
+                            <span class="team-name">-</span>
+                            <span class="vote-count">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Rankings Table -->
+                <div class="rankings-table">
+                    <h3>Team Rankings</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Team Name</th>
+                                <th>Team ID</th>
+                                <th>Votes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rankingsBody">
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: #999;">
+                                    No data yet. Click Refresh to load.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Scripts -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

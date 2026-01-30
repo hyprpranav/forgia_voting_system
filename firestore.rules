@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if code is valid and not expired
+    function isValidCode(code) {
+      let codeDoc = get(/databases/$(database)/documents/votingCodes/$(code));
+      return codeDoc != null 
+        && codeDoc.data.expiresAt > request.time;
+    }
+    
+    // Helper function to check rate limit (30 seconds)
+    function checkRateLimit(code) {
+      let codeDoc = get(/databases/$(database)/documents/votingCodes/$(code));
+      return !('lastVoteAt' in codeDoc.data) 
+        || codeDoc.data.lastVoteAt < request.time - duration.value(30, 's');
+    }
+    
+    // Helper function to check if code already voted for team
+    function hasVotedForTeam(code, teamId) {
+      let codeDoc = get(/databases/$(database)/documents/votingCodes/$(code));
+      return codeDoc.data.usedTeams.hasAny([teamId]);
+    }
+    
+    // Voting Codes Collection
+    // Only admin can write, anyone can read (for validation)
+    match /votingCodes/{code} {
+      allow read: if true;
+      allow create: if request.auth != null; // Admin only (via Firebase Auth)
+      allow update: if true; // Allow updates for vote tracking
+      allow delete: if request.auth != null; // Admin only
+    }
+    
+    // Teams Collection
+    // Anyone can read, only admin can create/delete
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create: if request.auth != null; // Admin only
+      allow update: if true; // Allow vote count updates
+      allow delete: if request.auth != null; // Admin only
+    }
+    
+    // Votes Collection (detailed tracking)
+    // Anyone can create (with validation), only admin can read all
+    match /votes/{voteId} {
+      allow read: if request.auth != null; // Admin only
+      allow create: if isValidCode(request.resource.data.code)
+                    && checkRateLimit(request.resource.data.code)
+                    && !hasVotedForTeam(request.resource.data.code, request.resource.data.teamId)
+                    && request.resource.data.votedAt == request.time;
+      allow update, delete: if false; // No updates or deletes
+    }
+    
+    // Settings Collection (for admin configuration)
+    match /settings/{document} {
+      allow read: if true;
+      allow write: if request.auth != null; // Admin only
+    }
+  }
+}

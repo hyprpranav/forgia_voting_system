@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vote for Team - Voting System</title>
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="voting-page">
+    <div class="container">
+        <!-- Voting Card -->
+        <div class="voting-card card">
+            <div class="voting-header">
+                <h1>🎫 Cast Your Vote</h1>
+                <p class="subtitle">Support your favorite team!</p>
+            </div>
+
+            <!-- Team Display -->
+            <div class="team-display">
+                <h2 id="teamName">Loading team...</h2>
+                <p class="team-id-display">Team ID: <span id="teamIdDisplay">-</span></p>
+            </div>
+
+            <!-- Voting Form -->
+            <form id="votingForm" class="voting-form">
+                <div class="form-group">
+                    <label for="votingCode">Enter Your Voting Code</label>
+                    <input 
+                        type="text" 
+                        id="votingCode" 
+                        placeholder="e.g., 123" 
+                        maxlength="3"
+                        pattern="[0-9]*"
+                        inputmode="numeric"
+                        required
+                        autofocus
+                    >
+                    <small>Enter the code you received at the entrance</small>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-large" id="submitVoteBtn">
+                    Submit Vote 🎉
+                </button>
+            </form>
+
+            <!-- Status Messages -->
+            <div id="statusMessage" class="status-message" style="display: none;"></div>
+
+            <!-- Success Screen -->
+            <div id="successScreen" style="display: none;">
+                <div class="success-animation">
+                    <div class="checkmark">✓</div>
+                    <h2>Vote Submitted!</h2>
+                    <p>Thank you for voting for <strong id="successTeamName"></strong></p>
+                    <div class="vote-info">
+                        <p>✅ Your vote has been recorded</p>
+                        <p>⏱️ Wait 30 seconds before voting again</p>
+                    </div>
+                    <button id="scanAnotherBtn" class="btn btn-secondary">
+                        Scan Another Team QR
+                    </button>
+                </div>
+            </div>
+
+            <!-- Error Display -->
+            <div id="errorDisplay" class="error-display" style="display: none;">
+                <div class="error-icon">⚠️</div>
+                <h3 id="errorTitle">Error</h3>
+                <p id="errorMessage"></p>
+                <button id="retryBtn" class="btn btn-secondary">Try Again</button>
+            </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="instructions card">
+            <h3>ℹ️ How to Vote</h3>
+            <ol>
+                <li>Scan team QR code (you're here!)</li>
+                <li>Enter your voting code received at entrance</li>
+                <li>Click "Submit Vote"</li>
+                <li>Wait 30 seconds between votes</li>
+                <li>Vote for multiple teams with the same code!</li>
+            </ol>
+        </div>
+
+        <!-- Footer -->
+        <footer class="voting-footer">
+            <p>🔒 Secure Voting System</p>
+            <p>One vote per team • Time-limited codes</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <p>Submitting your vote...</p>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Scripts -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/voting.js"></script>
+</body>
+</html>
