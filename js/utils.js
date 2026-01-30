@@ -59,7 +59,7 @@ async function isCodeExpired(code) {
         
         if (!codeDoc.exists) {
             console.log('Code does not exist:', code);
-            return true; // Code doesn't exist = expired
+            return { expired: true, minutesLeft: 0 };
         }
         
         const data = codeDoc.data();
@@ -72,21 +72,23 @@ async function isCodeExpired(code) {
         } else if (expiresAt instanceof Date) {
             expiryDate = expiresAt;
         } else if (typeof expiresAt === 'number') {
-            // Handle milliseconds timestamp
             expiryDate = new Date(expiresAt);
         } else if (typeof expiresAt === 'string') {
             expiryDate = new Date(parseInt(expiresAt));
         } else {
             console.log('Could not parse expiry date:', expiresAt);
-            return true;
+            return { expired: true, minutesLeft: 0 };
         }
         
-        const isExpired = new Date() > expiryDate;
-        console.log('Code expiry check:', code, 'Expires:', expiryDate, 'Expired:', isExpired);
-        return isExpired;
+        const now = new Date();
+        const isExpired = now > expiryDate;
+        const minutesLeft = Math.ceil((expiryDate - now) / 60000);
+        
+        console.log('Code expiry check:', code, 'Expires:', expiryDate, 'Expired:', isExpired, 'Minutes left:', minutesLeft);
+        return { expired: isExpired, minutesLeft: minutesLeft };
     } catch (error) {
         console.error('Error checking code expiry:', error);
-        return true; // Assume expired on error
+        return { expired: true, minutesLeft: 0 };
     }
 }
 
@@ -178,12 +180,13 @@ async function submitVote(code, teamId, teamName) {
         console.log('✓ Code format valid');
         
         // 2. Check if code exists and is not expired
-        const expired = await isCodeExpired(code);
-        if (expired) {
+        const expiryCheck = await isCodeExpired(code);
+        if (expiryCheck.expired) {
             console.log('FAILED: Code expired or does not exist');
             return { success: false, message: 'Invalid code. This code does not exist or has expired.' };
         }
         console.log('✓ Code exists and not expired');
+        console.log(`⏰ Code expires in ${expiryCheck.minutesLeft} minutes`);
         
         // 3. Check rate limit
         const rateLimit = await checkRateLimit(code);
@@ -257,7 +260,13 @@ async function submitVote(code, teamId, teamName) {
         });
         
         console.log('=== Vote submitted successfully! ===');
-        return { success: true, message: 'Vote submitted successfully!' };
+        
+        // Return success with expiry info
+        return { 
+            success: true, 
+            message: 'Vote submitted successfully!',
+            minutesLeft: expiryCheck.minutesLeft
+        };
     } catch (error) {
         console.error('=== ERROR submitting vote ===');
         console.error('Error details:', error);

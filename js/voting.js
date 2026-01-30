@@ -100,7 +100,7 @@ async function handleVoteSubmit(e) {
         
         if (result.success) {
             console.log('Vote successful!');
-            showSuccess();
+            showSuccessWithInfo(result.minutesLeft || 0);
         } else {
             console.log('Vote failed:', result.message);
             showStatus(result.message, 'error');
@@ -137,6 +137,31 @@ function showSuccess() {
     votingForm.style.display = 'none';
     statusMessage.style.display = 'none';
     successTeamName.textContent = currentTeamName;
+    successScreen.style.display = 'block';
+    
+    // Play success animation
+    const checkmark = document.querySelector('.checkmark');
+    checkmark.style.animation = 'none';
+    setTimeout(() => {
+        checkmark.style.animation = 'checkmarkPop 0.5s ease';
+    }, 10);
+}
+
+// Show success with notifications
+function showSuccessWithInfo(minutesLeft) {
+    votingForm.style.display = 'none';
+    statusMessage.style.display = 'none';
+    successTeamName.textContent = currentTeamName;
+    
+    // Add expiry and rate limit info
+    const voteInfo = document.querySelector('.vote-info');
+    voteInfo.innerHTML = `
+        <p>✅ Your vote has been recorded</p>
+        <p>⏰ Your code will expire in <strong>${minutesLeft} minutes</strong></p>
+        <p>⏱️ Wait 30 seconds before voting again</p>
+        <p>🎉 Vote for other teams with the same code!</p>
+    `;
+    
     successScreen.style.display = 'block';
     
     // Play success animation

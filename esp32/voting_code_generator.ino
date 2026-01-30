@@ -17,8 +17,8 @@
 #include <ArduinoJson.h>
 
 // ===== WiFi Configuration =====
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "Oppo A77s";
+const char* password = "9080061674";
 
 // ===== Firebase Configuration =====
 // Get your Firebase REST API details from Firebase Console
@@ -35,7 +35,7 @@ MFRC522 rfid(SS_PIN, RST_PIN);
 WebServer server(80);
 
 // ===== Configuration =====
-const int CODE_VALIDITY_MINUTES = 30;  // Code valid for 30 minutes
+const int CODE_VALIDITY_MINUTES = 45;  // Code valid for 45 minutes
 const int MIN_CODE = 10;                // Minimum 2-digit code
 const int MAX_CODE = 999;               // Maximum 3-digit code
 

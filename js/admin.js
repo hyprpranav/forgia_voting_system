@@ -25,6 +25,7 @@ const downloadQRBtn = document.getElementById('downloadQRBtn');
 const refreshAnalyticsBtn = document.getElementById('refreshAnalyticsBtn');
 const exportResultsBtn = document.getElementById('exportResultsBtn');
 const refreshCodesBtn = document.getElementById('refreshCodesBtn');
+const deleteAllBtn = document.getElementById('deleteAllBtn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -41,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAnalyticsBtn.addEventListener('click', loadAnalytics);
     exportResultsBtn.addEventListener('click', handleExportResults);
     refreshCodesBtn.addEventListener('click', loadAllCodes);
+    deleteAllBtn.addEventListener('click', handleDeleteAll);
 });
 
 // Authentication
@@ -206,9 +208,9 @@ async function handleManualGenerate() {
         // Generate random 2-3 digit code
         const code = String(Math.floor(Math.random() * (999 - 10 + 1)) + 10);
         
-        // Calculate expiry time (30 minutes from now)
+        // Calculate expiry time (45 minutes from now)
         const now = new Date();
-        const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
+        const expiresAt = new Date(now.getTime() + 45 * 60 * 1000);
         
         // Detect if running on localhost or hosted
         const isLocalhost = window.location.hostname === 'localhost' || 
@@ -532,5 +534,83 @@ async function handleExportResults() {
         showToast('Failed to export results', 'error');
     } finally {
         exportResultsBtn.disabled = false;
+    }
+}
+
+// Delete All Data with Passkey
+async function handleDeleteAll() {
+    const passkey = prompt('⚠️ WARNING: This will delete ALL teams, codes, and votes!\n\nEnter passkey to continue:');
+    
+    if (passkey !== '0000') {
+        if (passkey !== null) {
+            showToast('Invalid passkey!', 'error');
+        }
+        return;
+    }
+    
+    const confirm = window.confirm('Are you absolutely sure? This action CANNOT be undone!\n\n- All teams will be deleted\n- All voting codes will be deleted\n- All vote records will be deleted');
+    
+    if (!confirm) {
+        return;
+    }
+    
+    try {
+        deleteAllBtn.disabled = true;
+        deleteAllBtn.textContent = 'Deleting...';
+        showLoading();
+        
+        let deletedCount = 0;
+        
+        // Delete all teams
+        console.log('Deleting teams...');
+        const teamsSnapshot = await db.collection('teams').get();
+        const teamsBatch = db.batch();
+        teamsSnapshot.forEach(doc => {
+            teamsBatch.delete(doc.ref);
+            deletedCount++;
+        });
+        await teamsBatch.commit();
+        console.log(`Deleted ${teamsSnapshot.size} teams`);
+        
+        // Delete all voting codes
+        console.log('Deleting voting codes...');
+        const codesSnapshot = await db.collection('votingCodes').get();
+        const codesBatch = db.batch();
+        codesSnapshot.forEach(doc => {
+            codesBatch.delete(doc.ref);
+            deletedCount++;
+        });
+        await codesBatch.commit();
+        console.log(`Deleted ${codesSnapshot.size} codes`);
+        
+        // Delete all votes
+        console.log('Deleting votes...');
+        const votesSnapshot = await db.collection('votes').get();
+        const votesBatch = db.batch();
+        votesSnapshot.forEach(doc => {
+            votesBatch.delete(doc.ref);
+            deletedCount++;
+        });
+        await votesBatch.commit();
+        console.log(`Deleted ${votesSnapshot.size} votes`);
+        
+        hideLoading();
+        showToast(`✅ Successfully deleted ${deletedCount} records!`, 'success');
+        
+        // Refresh all data displays
+        loadAnalytics();
+        loadAllCodes();
+        
+        // Reset code display
+        currentCode.textContent = '---';
+        codeTimestamp.textContent = 'All data deleted. Generate new code to start.';
+        
+    } catch (error) {
+        console.error('Error deleting data:', error);
+        hideLoading();
+        showToast('Failed to delete data: ' + error.message, 'error');
+    } finally {
+        deleteAllBtn.disabled = false;
+        deleteAllBtn.textContent = '🗑️ Delete All Data';
     }
 }
