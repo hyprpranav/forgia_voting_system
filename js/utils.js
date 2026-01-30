@@ -204,11 +204,21 @@ async function submitVote(code, teamId, teamName) {
         // 5. Submit vote using Firestore transaction
         console.log('Starting Firestore transaction...');
         await db.runTransaction(async (transaction) => {
-            // Get current team data
+            // STEP 1: DO ALL READS FIRST (Firestore requirement)
+            console.log('Step 1: Reading team document...');
             const teamRef = db.collection('teams').doc(teamId);
             const teamDoc = await transaction.get(teamRef);
             
-            // Create team if doesn't exist
+            console.log('Step 2: Reading code document...');
+            const codeRef = db.collection('votingCodes').doc(code);
+            const codeDoc = await transaction.get(codeRef);
+            
+            if (!codeDoc.exists) {
+                throw new Error('Code document disappeared during transaction');
+            }
+            
+            // STEP 2: NOW DO ALL WRITES (After all reads are done)
+            console.log('Step 3: Writing team vote...');
             if (!teamDoc.exists) {
                 console.log('Creating new team entry');
                 transaction.set(teamRef, {
@@ -225,14 +235,7 @@ async function submitVote(code, teamId, teamName) {
                 });
             }
             
-            // Update voting code
-            const codeRef = db.collection('votingCodes').doc(code);
-            const codeDoc = await transaction.get(codeRef);
-            
-            if (!codeDoc.exists) {
-                throw new Error('Code document disappeared during transaction');
-            }
-            
+            console.log('Step 4: Updating voting code...');
             const usedTeams = codeDoc.data().usedTeams || [];
             console.log('Updating code usedTeams:', [...usedTeams, teamId]);
             
@@ -241,7 +244,7 @@ async function submitVote(code, teamId, teamName) {
                 lastVoteAt: firebase.firestore.FieldValue.serverTimestamp()
             });
             
-            // Record detailed vote
+            console.log('Step 5: Recording detailed vote...');
             const voteRef = db.collection('votes').doc();
             transaction.set(voteRef, {
                 teamId: teamId,
