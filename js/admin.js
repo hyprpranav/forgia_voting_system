@@ -24,6 +24,7 @@ const qrResult = document.getElementById('qrResult');
 const downloadQRBtn = document.getElementById('downloadQRBtn');
 const refreshAnalyticsBtn = document.getElementById('refreshAnalyticsBtn');
 const exportResultsBtn = document.getElementById('exportResultsBtn');
+const refreshCodesBtn = document.getElementById('refreshCodesBtn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadQRBtn.addEventListener('click', handleDownloadQR);
     refreshAnalyticsBtn.addEventListener('click', loadAnalytics);
     exportResultsBtn.addEventListener('click', handleExportResults);
+    refreshCodesBtn.addEventListener('click', loadAllCodes);
 });
 
 // Authentication
@@ -208,18 +210,28 @@ async function handleManualGenerate() {
         const now = new Date();
         const expiresAt = new Date(now.getTime() + 30 * 60 * 1000);
         
+        // Detect if running on localhost or hosted
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' ||
+                           window.location.hostname.includes('192.168');
+        const generatedBy = isLocalhost ? 'localhost' : 'hosted';
+        
         // Save directly to Firebase
         await db.collection('votingCodes').doc(code).set({
             code: code,
             createdAt: firebase.firestore.FieldValue.serverTimestamp(),
             expiresAt: firebase.firestore.Timestamp.fromDate(expiresAt),
             usedTeams: [],
-            generatedBy: 'manual'
+            generatedBy: generatedBy,
+            generatedVia: 'manual'
         });
         
         // Display the code
         displayCode(code);
         showToast('Code generated and saved to Firebase!', 'success');
+        
+        // Refresh codes list
+        setTimeout(() => loadAllCodes(), 500);
         
         // If ESP32 is connected, also try to sync
         if (esp32Connected) {
@@ -256,12 +268,20 @@ async function handleGenerateQR() {
         generateQRBtn.disabled = true;
         generateQRBtn.textContent = 'Generating...';
         
+        // Detect if running on localhost or hosted
+        const isLocalhost = window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1' ||
+                           window.location.hostname.includes('192.168');
+        const qrGeneratedBy = isLocalhost ? 'localhost' : 'hosted';
+        
         // Save team to Firebase
         await db.collection('teams').doc(teamId).set({
             teamId: teamId,
             teamName: teamName,
             votes: 0,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            qrGeneratedBy: qrGeneratedBy,
+            qrGeneratedAt: firebase.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         
         // Clear previous QR code
@@ -399,6 +419,9 @@ async function loadAnalytics() {
                     <td>${sanitizeInput(team.teamName || 'Unknown')}</td>
                     <td><code>${sanitizeInput(team.teamId || team.id)}</code></td>
                     <td><strong>${team.votes || 0}</strong></td>
+                    <td><span style="color: ${team.qrGeneratedBy === 'localhost' ? '#2196F3' : '#4CAF50'};">
+                        ${team.qrGeneratedBy || 'N/A'}
+                    </span></td>
                 `;
                 tbody.appendChild(row);
             });
@@ -411,6 +434,85 @@ async function loadAnalytics() {
     } finally {
         refreshAnalyticsBtn.textContent = 'Refresh';
         refreshAnalyticsBtn.disabled = false;
+    }
+}
+
+// Load All Generated Codes
+async function loadAllCodes() {
+    try {
+        refreshCodesBtn.textContent = 'Loading...';
+        refreshCodesBtn.disabled = true;
+        
+        // Get all voting codes ordered by creation time
+        const snapshot = await db.collection('votingCodes')
+            .orderBy('createdAt', 'desc')
+            .get();
+        
+        const tbody = document.getElementById('codesTableBody');
+        tbody.innerHTML = '';
+        
+        if (snapshot.empty) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No codes generated yet</td></tr>';
+            document.getElementById('totalCodesCount').textContent = '0';
+            return;
+        }
+        
+        let totalCodes = 0;
+        const now = new Date();
+        
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            totalCodes++;
+            
+            // Format timestamps
+            const createdAt = data.createdAt ? formatTimestamp(data.createdAt) : 'Unknown';
+            const expiresAt = data.expiresAt ? formatTimestamp(data.expiresAt) : 'Unknown';
+            
+            // Check if expired
+            let expiryDate;
+            if (data.expiresAt && data.expiresAt.toDate) {
+                expiryDate = data.expiresAt.toDate();
+            } else if (data.expiresAt instanceof Date) {
+                expiryDate = data.expiresAt;
+            }
+            const isExpired = expiryDate ? now > expiryDate : false;
+            const status = isExpired ? '❌ Expired' : '✅ Active';
+            const statusColor = isExpired ? '#f44336' : '#4CAF50';
+            
+            // Generation method
+            const generatedBy = data.generatedBy || 'unknown';
+            const generatedVia = data.generatedVia || 'N/A';
+            const methodDisplay = generatedVia === 'manual' ? 
+                `${generatedBy} (manual)` : 
+                generatedBy;
+            
+            // Votes used
+            const usedTeams = data.usedTeams || [];
+            const votesUsed = usedTeams.length;
+            
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${doc.id}</strong></td>
+                <td>${createdAt}</td>
+                <td>${expiresAt}</td>
+                <td><span style="color: ${generatedBy === 'localhost' ? '#2196F3' : '#FF9800'};">
+                    ${methodDisplay}
+                </span></td>
+                <td><span style="color: ${statusColor}; font-weight: 600;">${status}</span></td>
+                <td>${votesUsed} vote${votesUsed !== 1 ? 's' : ''}</td>
+            `;
+            tbody.appendChild(row);
+        });
+        
+        document.getElementById('totalCodesCount').textContent = totalCodes;
+        showToast(`Loaded ${totalCodes} codes`, 'success');
+        
+    } catch (error) {
+        console.error('Error loading codes:', error);
+        showToast('Failed to load codes', 'error');
+    } finally {
+        refreshCodesBtn.textContent = 'Refresh Codes';
+        refreshCodesBtn.disabled = false;
     }
 }
 

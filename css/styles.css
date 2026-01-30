@@ -382,13 +382,15 @@ body {
     overflow-x: auto;
 }
 
-.rankings-table table {
+.rankings-table table,
+.codes-table table {
     width: 100%;
     border-collapse: collapse;
     margin-top: 12px;
 }
 
-.rankings-table th {
+.rankings-table th,
+.codes-table th {
     background: var(--primary-color);
     color: white;
     padding: 12px;
@@ -396,20 +398,35 @@ body {
     font-weight: 600;
 }
 
-.rankings-table td {
+.rankings-table td,
+.codes-table td {
     padding: 12px;
     border-bottom: 1px solid var(--border-color);
 }
 
-.rankings-table tr:hover {
+.rankings-table tr:hover,
+.codes-table tr:hover {
     background: var(--bg-color);
 }
 
-.rankings-table code {
+.rankings-table code,
+.codes-table code {
     background: var(--bg-color);
     padding: 4px 8px;
     border-radius: 4px;
     font-family: 'Courier New', monospace;
+}
+
+.codes-table {
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.codes-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 /* Voting Page */
