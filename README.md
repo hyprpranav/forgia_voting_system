@@ -1,15 +1,18 @@
-# Secure Hall-Restricted Voting System
+# Forgia 2k26 - Secure Voting System
+
+**Project Expo | 31st Jan 2026 | 3:00 PM - 5:00 PM**
 
 A browser-based voting system for college expo events using ESP32, RFID, and Firebase.
 
 ## 🎯 System Overview
 
 - **Audience receives voting code**: RFID scan at entrance → ESP32 generates 2-3 digit code
-- **Time-limited access**: Codes expire in 30-60 minutes
+- **Time-limited access**: Codes expire in 45 minutes
 - **Team voting**: Scan team QR → Enter code → Vote
 - **Rate limiting**: 30 seconds between votes
 - **One vote per team**: Each code can vote once per team
 - **Live analytics**: Real-time dashboard for admins
+- **Duplicate detection**: ESP32 warns if same RFID card scanned twice
 
 ## 📋 Prerequisites
 

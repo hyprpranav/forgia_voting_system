@@ -41,6 +41,7 @@ const int MAX_CODE = 999;               // Maximum 3-digit code
 
 // ===== State Variables =====
 String lastGeneratedCode = "";
+String lastScannedUID = "";  // Store last scanned RFID UID
 unsigned long lastRfidScanTime = 0;
 const unsigned long RFID_SCAN_COOLDOWN = 2000; // 2 seconds between scans
 
@@ -116,8 +117,31 @@ void checkRFID() {
   
   lastRfidScanTime = millis();
   
-  // Card detected - generate code
-  Serial.println("\n🎫 RFID Card Detected!");
+  // Get UID as string for comparison
+  String currentUID = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    currentUID += String(rfid.uid.uidByte[i], HEX);
+  }
+  
+  // Check if this card was already scanned
+  if (currentUID == lastScannedUID && lastScannedUID.length() > 0) {
+    Serial.println("\n⚠️  WARNING: DUPLICATE CARD SCAN!");
+    Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━");
+    Serial.println("⚠️  This card was already scanned!");
+    Serial.println("⚠️  Please use a NEW card to generate code.");
+    Serial.print("📱 Previous Code: ");
+    Serial.println(lastGeneratedCode);
+    Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    
+    // Halt PICC
+    rfid.PICC_HaltA();
+    rfid.PCD_StopCrypto1();
+    return;  // Don't generate new code
+  }
+  
+  // New card detected - generate code
+  Serial.println("\n🎫 NEW RFID Card Detected!");
+  lastScannedUID = currentUID;  // Store this UID
   
   // Generate random voting code
   String votingCode = generateVotingCode();
@@ -219,25 +243,31 @@ void setupServerRoutes() {
   // Manual code generation (fallback)
   server.on("/generateCode", HTTP_POST, handleManualGenerate);
   
+  // Reset last scanned UID (allow new cards)
+  server.on("/resetUID", HTTP_POST, handleResetUID);
+  
   // Health check
   server.on("/health", HTTP_GET, handleHealth);
   
   // Handle CORS preflight
   server.on("/getLatestCode", HTTP_OPTIONS, handleCORS);
   server.on("/generateCode", HTTP_OPTIONS, handleCORS);
+  server.on("/resetUID", HTTP_OPTIONS, handleCORS);
   
   // 404 handler
   server.onNotFound(handleNotFound);
 }
 
 void handleRoot() {
-  String html = "<!DOCTYPE html><html><head><title>ESP32 Voting System</title>";
+  String html = "<!DOCTYPE html><html><head><title>Forgia 2k26 - Voting System</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<style>body{font-family:Arial;padding:20px;background:#f0f0f0;}";
   html += ".card{background:white;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);margin:10px 0;}";
   html += "h1{color:#333;}.code{font-size:48px;font-weight:bold;color:#4CAF50;text-align:center;margin:20px 0;}";
-  html += ".status{color:#666;}.green{color:#4CAF50;}.red{color:#f44336;}</style></head><body>";
-  html += "<h1>🎫 ESP32 Voting System</h1>";
+  html += ".status{color:#666;}.green{color:#4CAF50;}.red{color:#f44336;}";
+  html += ".event-info{background:linear-gradient(135deg,#FF6B35,#F7931E);color:white;padding:15px;border-radius:8px;text-align:center;margin-bottom:15px;}</style></head><body>";
+  html += "<div class='event-info'><h2 style='margin:0;'>🎫 Forgia 2k26</h2><p style='margin:5px 0;'>Project Expo | 31st Jan 2026 | 3:00 PM - 5:00 PM</p></div>";
+  html += "<h1>ESP32 Voting System</h1>";
   html += "<div class='card'><h2>System Status</h2>";
   html += "<p class='status'>WiFi: <span class='green'>Connected</span></p>";
   html += "<p class='status'>IP: " + WiFi.localIP().toString() + "</p>";
@@ -298,6 +328,23 @@ void handleManualGenerate() {
   serializeJson(doc, response);
   
   server.send(success ? 200 : 500, "application/json", response);
+}
+
+void handleResetUID() {
+  // Enable CORS
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  
+  lastScannedUID = "";  // Clear last scanned UID
+  Serial.println("\n🔄 UID Reset - Ready for new cards");
+  
+  StaticJsonDocument<200> doc;
+  doc["success"] = true;
+  doc["message"] = "UID reset successfully. Ready for new cards.";
+  
+  String response;
+  serializeJson(doc, response);
+  
+  server.send(200, "application/json", response);
 }
 
 void handleHealth() {

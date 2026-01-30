@@ -536,7 +536,12 @@ body {
     font-size: 32px;
     margin-bottom: 8px;
     font-weight: 700;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    color: #FFFFFF;
+    text-shadow: 0 3px 6px rgba(0, 0, 0, 0.3);
+}
+
+.team-display p {
+    color: rgba(255, 255, 255, 0.95);
 }
 
 .team-id-display {

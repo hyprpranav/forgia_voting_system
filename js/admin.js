@@ -561,38 +561,52 @@ async function handleDeleteAll() {
         
         let deletedCount = 0;
         
+        // Helper function to delete in batches (Firestore limit: 500 ops per batch)
+        const deleteInBatches = async (collectionName) => {
+            const snapshot = await db.collection(collectionName).get();
+            const batchSize = 500;
+            let batch = db.batch();
+            let operationCount = 0;
+            let totalDeleted = 0;
+            
+            for (const doc of snapshot.docs) {
+                batch.delete(doc.ref);
+                operationCount++;
+                totalDeleted++;
+                
+                // Commit batch when reaching limit
+                if (operationCount === batchSize) {
+                    await batch.commit();
+                    batch = db.batch();
+                    operationCount = 0;
+                }
+            }
+            
+            // Commit remaining operations
+            if (operationCount > 0) {
+                await batch.commit();
+            }
+            
+            return totalDeleted;
+        };
+        
         // Delete all teams
         console.log('Deleting teams...');
-        const teamsSnapshot = await db.collection('teams').get();
-        const teamsBatch = db.batch();
-        teamsSnapshot.forEach(doc => {
-            teamsBatch.delete(doc.ref);
-            deletedCount++;
-        });
-        await teamsBatch.commit();
-        console.log(`Deleted ${teamsSnapshot.size} teams`);
+        const teamsDeleted = await deleteInBatches('teams');
+        console.log(`Deleted ${teamsDeleted} teams`);
+        deletedCount += teamsDeleted;
         
         // Delete all voting codes
         console.log('Deleting voting codes...');
-        const codesSnapshot = await db.collection('votingCodes').get();
-        const codesBatch = db.batch();
-        codesSnapshot.forEach(doc => {
-            codesBatch.delete(doc.ref);
-            deletedCount++;
-        });
-        await codesBatch.commit();
-        console.log(`Deleted ${codesSnapshot.size} codes`);
+        const codesDeleted = await deleteInBatches('votingCodes');
+        console.log(`Deleted ${codesDeleted} codes`);
+        deletedCount += codesDeleted;
         
         // Delete all votes
         console.log('Deleting votes...');
-        const votesSnapshot = await db.collection('votes').get();
-        const votesBatch = db.batch();
-        votesSnapshot.forEach(doc => {
-            votesBatch.delete(doc.ref);
-            deletedCount++;
-        });
-        await votesBatch.commit();
-        console.log(`Deleted ${votesSnapshot.size} votes`);
+        const votesDeleted = await deleteInBatches('votes');
+        console.log(`Deleted ${votesDeleted} votes`);
+        deletedCount += votesDeleted;
         
         hideLoading();
         showToast(`✅ Successfully deleted ${deletedCount} records!`, 'success');
