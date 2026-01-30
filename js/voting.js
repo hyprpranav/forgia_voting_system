@@ -68,6 +68,11 @@ async function handleVoteSubmit(e) {
     
     const code = votingCodeInput.value.trim();
     
+    console.log('=== Vote Form Submitted ===');
+    console.log('Entered code:', code);
+    console.log('Team ID:', currentTeamId);
+    console.log('Team Name:', currentTeamName);
+    
     if (!code) {
         showStatus('Please enter your voting code', 'error');
         return;
@@ -84,22 +89,30 @@ async function handleVoteSubmit(e) {
         submitVoteBtn.textContent = 'Submitting...';
         showLoading();
         
+        console.log('Calling submitVote function...');
+        
         // Submit vote
         const result = await submitVote(code, currentTeamId, currentTeamName);
+        
+        console.log('Vote result:', result);
         
         hideLoading();
         
         if (result.success) {
+            console.log('Vote successful!');
             showSuccess();
         } else {
+            console.log('Vote failed:', result.message);
             showStatus(result.message, 'error');
             submitVoteBtn.disabled = false;
             submitVoteBtn.textContent = 'Submit Vote 🎉';
         }
     } catch (error) {
-        console.error('Vote submission error:', error);
+        console.error('=== Vote submission exception ===');
+        console.error('Error:', error);
+        console.error('Error message:', error.message);
         hideLoading();
-        showStatus('An unexpected error occurred. Please try again.', 'error');
+        showStatus(`Error: ${error.message || 'Unknown error occurred'}`, 'error');
         submitVoteBtn.disabled = false;
         submitVoteBtn.textContent = 'Submit Vote 🎉';
     }

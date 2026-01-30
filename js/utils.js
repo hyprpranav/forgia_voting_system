@@ -58,6 +58,7 @@ async function isCodeExpired(code) {
         const codeDoc = await db.collection('votingCodes').doc(code).get();
         
         if (!codeDoc.exists) {
+            console.log('Code does not exist:', code);
             return true; // Code doesn't exist = expired
         }
         
@@ -70,12 +71,19 @@ async function isCodeExpired(code) {
             expiryDate = expiresAt.toDate();
         } else if (expiresAt instanceof Date) {
             expiryDate = expiresAt;
+        } else if (typeof expiresAt === 'number') {
+            // Handle milliseconds timestamp
+            expiryDate = new Date(expiresAt);
+        } else if (typeof expiresAt === 'string') {
+            expiryDate = new Date(parseInt(expiresAt));
         } else {
-            // Fallback: assume expired if can't parse
+            console.log('Could not parse expiry date:', expiresAt);
             return true;
         }
         
-        return new Date() > expiryDate;
+        const isExpired = new Date() > expiryDate;
+        console.log('Code expiry check:', code, 'Expires:', expiryDate, 'Expired:', isExpired);
+        return isExpired;
     } catch (error) {
         console.error('Error checking code expiry:', error);
         return true; // Assume expired on error
@@ -88,13 +96,17 @@ async function hasVotedForTeam(code, teamId) {
         const codeDoc = await db.collection('votingCodes').doc(code).get();
         
         if (!codeDoc.exists) {
+            console.log('Vote check - code not found:', code);
             return false;
         }
         
         const data = codeDoc.data();
         const usedTeams = data.usedTeams || [];
         
-        return usedTeams.includes(teamId);
+        const hasVoted = usedTeams.includes(teamId);
+        console.log('Vote check - already voted for team?', hasVoted, 'Used teams:', usedTeams);
+        
+        return hasVoted;
     } catch (error) {
         console.error('Error checking vote status:', error);
         return false;
@@ -107,6 +119,7 @@ async function checkRateLimit(code) {
         const codeDoc = await db.collection('votingCodes').doc(code).get();
         
         if (!codeDoc.exists) {
+            console.log('Rate limit check - code not found:', code);
             return { allowed: false, message: 'Code not found' };
         }
         
@@ -114,6 +127,7 @@ async function checkRateLimit(code) {
         const lastVoteAt = data.lastVoteAt;
         
         if (!lastVoteAt) {
+            console.log('Rate limit check - no previous vote');
             return { allowed: true };
         }
         
@@ -122,13 +136,18 @@ async function checkRateLimit(code) {
             lastVoteDate = lastVoteAt.toDate();
         } else if (lastVoteAt instanceof Date) {
             lastVoteDate = lastVoteAt;
+        } else if (typeof lastVoteAt === 'number') {
+            lastVoteDate = new Date(lastVoteAt);
         } else {
+            console.log('Rate limit check - could not parse lastVoteAt, allowing');
             return { allowed: true };
         }
         
         const now = new Date();
         const diffSeconds = (now - lastVoteDate) / 1000;
         const waitTime = 30; // 30 seconds
+        
+        console.log('Rate limit check - seconds since last vote:', diffSeconds);
         
         if (diffSeconds < waitTime) {
             const remaining = Math.ceil(waitTime - diffSeconds);
@@ -147,31 +166,43 @@ async function checkRateLimit(code) {
 
 // Submit a vote
 async function submitVote(code, teamId, teamName) {
+    console.log('=== Starting vote submission ===');
+    console.log('Code:', code, 'Team ID:', teamId, 'Team Name:', teamName);
+    
     try {
         // 1. Validate code format
         if (!isValidCodeFormat(code)) {
-            return { success: false, message: 'Invalid code format. Use 2-3 digits.' };
+            console.log('FAILED: Invalid code format');
+            return { success: false, message: 'Invalid code format. Please enter 2-3 digits.' };
         }
+        console.log('✓ Code format valid');
         
         // 2. Check if code exists and is not expired
         const expired = await isCodeExpired(code);
         if (expired) {
-            return { success: false, message: 'This code has expired or does not exist.' };
+            console.log('FAILED: Code expired or does not exist');
+            return { success: false, message: 'Invalid code. This code does not exist or has expired.' };
         }
+        console.log('✓ Code exists and not expired');
         
         // 3. Check rate limit
         const rateLimit = await checkRateLimit(code);
         if (!rateLimit.allowed) {
+            console.log('FAILED: Rate limit');
             return { success: false, message: rateLimit.message };
         }
+        console.log('✓ Rate limit check passed');
         
         // 4. Check if already voted for this team
         const alreadyVoted = await hasVotedForTeam(code, teamId);
         if (alreadyVoted) {
-            return { success: false, message: 'You have already voted for this team.' };
+            console.log('FAILED: Already voted for this team');
+            return { success: false, message: 'You have already voted for this team. Try voting for other teams!' };
         }
+        console.log('✓ Has not voted for this team yet');
         
         // 5. Submit vote using Firestore transaction
+        console.log('Starting Firestore transaction...');
         await db.runTransaction(async (transaction) => {
             // Get current team data
             const teamRef = db.collection('teams').doc(teamId);
@@ -179,13 +210,16 @@ async function submitVote(code, teamId, teamName) {
             
             // Create team if doesn't exist
             if (!teamDoc.exists) {
+                console.log('Creating new team entry');
                 transaction.set(teamRef, {
                     teamId: teamId,
                     teamName: teamName,
-                    votes: 1
+                    votes: 1,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
                 });
             } else {
                 const currentVotes = teamDoc.data().votes || 0;
+                console.log('Updating team vote count from', currentVotes, 'to', currentVotes + 1);
                 transaction.update(teamRef, {
                     votes: currentVotes + 1
                 });
@@ -194,7 +228,13 @@ async function submitVote(code, teamId, teamName) {
             // Update voting code
             const codeRef = db.collection('votingCodes').doc(code);
             const codeDoc = await transaction.get(codeRef);
+            
+            if (!codeDoc.exists) {
+                throw new Error('Code document disappeared during transaction');
+            }
+            
             const usedTeams = codeDoc.data().usedTeams || [];
+            console.log('Updating code usedTeams:', [...usedTeams, teamId]);
             
             transaction.update(codeRef, {
                 usedTeams: [...usedTeams, teamId],
@@ -209,12 +249,26 @@ async function submitVote(code, teamId, teamName) {
                 code: code,
                 votedAt: firebase.firestore.FieldValue.serverTimestamp()
             });
+            
+            console.log('Transaction completed successfully');
         });
         
+        console.log('=== Vote submitted successfully! ===');
         return { success: true, message: 'Vote submitted successfully!' };
     } catch (error) {
-        console.error('Error submitting vote:', error);
-        return { success: false, message: 'An error occurred. Please try again.' };
+        console.error('=== ERROR submitting vote ===');
+        console.error('Error details:', error);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        
+        // Return more specific error messages
+        if (error.message && error.message.includes('permission')) {
+            return { success: false, message: 'Permission denied. Please check Firebase rules.' };
+        } else if (error.message && error.message.includes('not found')) {
+            return { success: false, message: 'Code not found. Please try again.' };
+        } else {
+            return { success: false, message: `Error: ${error.message || 'Unknown error occurred'}` };
+        }
     }
 }
 
