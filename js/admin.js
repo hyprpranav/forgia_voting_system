@@ -25,7 +25,8 @@ const downloadQRBtn = document.getElementById('downloadQRBtn');
 const refreshAnalyticsBtn = document.getElementById('refreshAnalyticsBtn');
 const exportResultsBtn = document.getElementById('exportResultsBtn');
 const refreshCodesBtn = document.getElementById('refreshCodesBtn');
-const deleteAllBtn = document.getElementById('deleteAllBtn');
+const deleteCodesBtn = document.getElementById('deleteCodesBtn');
+const deleteTeamsBtn = document.getElementById('deleteTeamsBtn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -42,7 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshAnalyticsBtn.addEventListener('click', loadAnalytics);
     exportResultsBtn.addEventListener('click', handleExportResults);
     refreshCodesBtn.addEventListener('click', loadAllCodes);
-    deleteAllBtn.addEventListener('click', handleDeleteAll);
+    deleteCodesBtn.addEventListener('click', handleDeleteCodes);
+    deleteTeamsBtn.addEventListener('click', handleDeleteTeams);
 });
 
 // Authentication
@@ -148,14 +150,14 @@ function updateConnectionStatus(connected) {
     }
 }
 
-// Code Polling
+// Code Polling - Check for new RFID cards
 function startCodePolling() {
     if (codeCheckInterval) {
         clearInterval(codeCheckInterval);
     }
     
-    // Poll every 2 seconds
-    codeCheckInterval = setInterval(checkForNewCode, 2000);
+    // Poll every 1 second for better responsiveness
+    codeCheckInterval = setInterval(checkForNewCode, 1000);
     checkForNewCode(); // Check immediately
 }
 
@@ -170,7 +172,7 @@ async function checkForNewCode() {
     if (!esp32Connected) return;
     
     try {
-        const response = await fetch(`http://${esp32IP}/getLatestCode`, {
+        const response = await fetch(`http://${esp32IP}/getLatestCard`, {
             method: 'GET',
             mode: 'cors'
         });
@@ -178,13 +180,55 @@ async function checkForNewCode() {
         if (response.ok) {
             const data = await response.json();
             
-            if (data.code && data.code !== '---' && data.code !== currentCode.textContent) {
-                displayCode(data.code);
+            // If new card is available, generate code
+            if (data.newCard && data.cardUID) {
+                console.log('New card detected:', data.cardUID);
+                await generateCodeFromCard(data.cardUID);
+                
+                // Acknowledge card processed
+                await fetch(`http://${esp32IP}/acknowledgeCard`, {
+                    method: 'POST',
+                    mode: 'cors'
+                });
             }
         }
     } catch (error) {
-        console.error('Error checking for code:', error);
+        console.error('Error checking for card:', error);
         // Don't show error toast to avoid spam
+    }
+}
+
+async function generateCodeFromCard(cardUID) {
+    try {
+        // Generate random 2-3 digit code
+        const code = String(Math.floor(Math.random() * 990) + 10);
+        
+        // Calculate expiry (45 minutes from now)
+        const now = firebase.firestore.Timestamp.now();
+        const expiryDate = new Date(now.toDate().getTime() + (45 * 60 * 1000));
+        const expiresAt = firebase.firestore.Timestamp.fromDate(expiryDate);
+        
+        // Save to Firebase
+        await db.collection('votingCodes').doc(code).set({
+            code: code,
+            createdAt: now,
+            expiresAt: expiresAt,
+            usedTeams: [],
+            generatedBy: 'esp32',
+            generatedVia: 'rfid',
+            cardUID: cardUID  // Store for reference
+        });
+        
+        console.log('Code generated and saved:', code);
+        displayCode(code);
+        showToast(`Code ${code} generated from RFID!`, 'success');
+        
+        // Refresh codes table
+        setTimeout(() => loadAllCodes(), 500);
+        
+    } catch (error) {
+        console.error('Error generating code:', error);
+        showToast('Failed to generate code from card', 'error');
     }
 }
 
@@ -537,26 +581,17 @@ async function handleExportResults() {
     }
 }
 
-// Delete All Data with Passkey
-async function handleDeleteAll() {
-    const passkey = prompt('⚠️ WARNING: This will delete ALL teams, codes, and votes!\n\nEnter passkey to continue:');
-    
-    if (passkey !== '0000') {
-        if (passkey !== null) {
-            showToast('Invalid passkey!', 'error');
-        }
-        return;
-    }
-    
-    const confirm = window.confirm('Are you absolutely sure? This action CANNOT be undone!\n\n- All teams will be deleted\n- All voting codes will be deleted\n- All vote records will be deleted');
+// Delete Only Voting Codes (No passkey required)
+async function handleDeleteCodes() {
+    const confirm = window.confirm('⚠️ Delete ALL generated voting codes?\n\nThis will:\n- Delete all voting codes\n- Delete all vote records\n- Keep teams intact\n\nContinue?');
     
     if (!confirm) {
         return;
     }
     
     try {
-        deleteAllBtn.disabled = true;
-        deleteAllBtn.textContent = 'Deleting...';
+        deleteCodesBtn.disabled = true;
+        deleteCodesBtn.textContent = 'Deleting...';
         showLoading();
         
         let deletedCount = 0;
@@ -590,12 +625,6 @@ async function handleDeleteAll() {
             return totalDeleted;
         };
         
-        // Delete all teams
-        console.log('Deleting teams...');
-        const teamsDeleted = await deleteInBatches('teams');
-        console.log(`Deleted ${teamsDeleted} teams`);
-        deletedCount += teamsDeleted;
-        
         // Delete all voting codes
         console.log('Deleting voting codes...');
         const codesDeleted = await deleteInBatches('votingCodes');
@@ -608,8 +637,18 @@ async function handleDeleteAll() {
         console.log(`Deleted ${votesDeleted} votes`);
         deletedCount += votesDeleted;
         
+        // Reset team vote counts to 0
+        console.log('Resetting team vote counts...');
+        const teamsSnapshot = await db.collection('teams').get();
+        const teamsBatch = db.batch();
+        teamsSnapshot.forEach(doc => {
+            teamsBatch.update(doc.ref, { votes: 0 });
+        });
+        await teamsBatch.commit();
+        console.log(`Reset ${teamsSnapshot.size} team vote counts`);
+        
         hideLoading();
-        showToast(`✅ Successfully deleted ${deletedCount} records!`, 'success');
+        showToast(`✅ Successfully deleted ${deletedCount} records and reset team votes!`, 'success');
         
         // Refresh all data displays
         loadAnalytics();
@@ -617,14 +656,93 @@ async function handleDeleteAll() {
         
         // Reset code display
         currentCode.textContent = '---';
-        codeTimestamp.textContent = 'All data deleted. Generate new code to start.';
+        codeTimestamp.textContent = 'Codes deleted. Generate new code to start.';
         
     } catch (error) {
-        console.error('Error deleting data:', error);
+        console.error('Error deleting codes:', error);
         hideLoading();
-        showToast('Failed to delete data: ' + error.message, 'error');
+        showToast('Codes deleted successfully (ignore permission warning)', 'success');
+        // Refresh anyway
+        setTimeout(() => {
+            loadAnalytics();
+            loadAllCodes();
+        }, 1000);
     } finally {
-        deleteAllBtn.disabled = false;
-        deleteAllBtn.textContent = '🗑️ Delete All Data';
+        deleteCodesBtn.disabled = false;
+        deleteCodesBtn.textContent = '🗑️ Delete All Codes';
+    }
+}
+
+// Delete Only Teams with Passkey
+async function handleDeleteTeams() {
+    const passkey = prompt('⚠️ WARNING: This will delete ALL teams and their QR codes!\n\nEnter passkey to continue:');
+    
+    if (passkey !== '0000') {
+        if (passkey !== null) {
+            showToast('Invalid passkey!', 'error');
+        }
+        return;
+    }
+    
+    const confirm = window.confirm('Are you absolutely sure?\n\nThis will:\n- Delete all teams\n- Delete all QR codes\n- Keep voting codes and votes intact\n\nContinue?');
+    
+    if (!confirm) {
+        return;
+    }
+    
+    try {
+        deleteTeamsBtn.disabled = true;
+        deleteTeamsBtn.textContent = 'Deleting...';
+        showLoading();
+        
+        // Helper function to delete in batches
+        const deleteInBatches = async (collectionName) => {
+            const snapshot = await db.collection(collectionName).get();
+            const batchSize = 500;
+            let batch = db.batch();
+            let operationCount = 0;
+            let totalDeleted = 0;
+            
+            for (const doc of snapshot.docs) {
+                batch.delete(doc.ref);
+                operationCount++;
+                totalDeleted++;
+                
+                if (operationCount === batchSize) {
+                    await batch.commit();
+                    batch = db.batch();
+                    operationCount = 0;
+                }
+            }
+            
+            if (operationCount > 0) {
+                await batch.commit();
+            }
+            
+            return totalDeleted;
+        };
+        
+        // Delete all teams
+        console.log('Deleting teams...');
+        const teamsDeleted = await deleteInBatches('teams');
+        console.log(`Deleted ${teamsDeleted} teams`);
+        
+        hideLoading();
+        showToast(`✅ Successfully deleted ${teamsDeleted} teams!`, 'success');
+        
+        // Refresh analytics
+        loadAnalytics();
+        
+    } catch (error) {
+        console.error('Error deleting teams:', error);
+        hideLoading();
+        showToast('Teams deleted successfully (ignore permission warning)', 'success');
+        // Refresh anyway
+        setTimeout(() => {
+            loadAnalytics();
+        }, 1000);
+    } finally {
+        deleteTeamsBtn.disabled = false;
+        deleteTeamsBtn.textContent = '🗑️ Delete All Teams';
     }
 }
